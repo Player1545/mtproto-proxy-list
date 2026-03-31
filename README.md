@@ -16,14 +16,6 @@
 2. [sakha1370/V2rayCollector](https://raw.githubusercontent.com/sakha1370/V2rayCollector/refs/heads/main/active_mtproto_proxies.txt)
 3. [WhitePrime/xraycheck](https://raw.githubusercontent.com/WhitePrime/xraycheck/refs/heads/main/configs/white-list_mtproto)
 
-## Развёртывание на GitHub Pages
-
-1. Запушьте репозиторий на GitHub
-2. Включите GitHub Pages в настройках репозитория:
-   - Settings → Pages → Source → Deploy from a branch
-   - Выберите ветку `main` и папку `/ (root)`
-3. GitHub Actions автоматически запустится и создаст файл `proxies.json`
-
 ## Структура проекта
 
 ```
