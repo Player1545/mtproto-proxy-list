@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MTProto Proxy List</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔐 MTProto Proxy List</h1>
+            <p class="subtitle">Активные прокси для Telegram</p>
+            <div class="status-bar">
+                <span id="last-update">Обновлено: --</span>
+                <span id="total-proxies">Всего: 0</span>
+                <button id="refresh-btn" class="refresh-btn" title="Обновить список">🔄</button>
+            </div>
+        </header>
+
+        <div class="filters">
+            <input type="text" id="search-input" class="search-input" placeholder="Поиск по стране или IP...">
+            <select id="country-filter" class="country-filter">
+                <option value="">Все страны</option>
+            </select>
+        </div>
+
+        <div id="proxy-list" class="proxy-list">
+            <div class="loading">Загрузка прокси...</div>
+        </div>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <button class="modal-close" id="modal-close">&times;</button>
+            <h2 id="modal-title">Информация о прокси</h2>
+            <div id="modal-body" class="modal-body">
+                <div class="proxy-detail">
+                    <span class="detail-label">Страна:</span>
+                    <span id="detail-country" class="detail-value">--</span>
+                </div>
+                <div class="proxy-detail">
+                    <span class="detail-label">IP:</span>
+                    <span id="detail-ip" class="detail-value">--</span>
+                </div>
+                <div class="proxy-detail">
+                    <span class="detail-label">Порт:</span>
+                    <span id="detail-port" class="detail-value">--</span>
+                </div>
+                <div class="proxy-detail">
+                    <span class="detail-label">Секрет:</span>
+                    <span id="detail-secret" class="detail-value">--</span>
+                </div>
+                <div class="proxy-detail">
+                    <span class="detail-label">Пинг:</span>
+                    <span id="detail-ping" class="detail-value">--</span>
+                </div>
+                <div class="proxy-detail">
+                    <span class="detail-label">Ссылка:</span>
+                    <div class="link-container">
+                        <input type="text" id="detail-link" class="detail-link" readonly>
+                        <button id="copy-link" class="copy-btn">Копировать</button>
+                        <a id="connect-link" class="connect-btn" href="#" target="_blank">Подключить</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
