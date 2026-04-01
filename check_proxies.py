@@ -47,33 +47,23 @@ def parse_proxy_line(line: str) -> Optional[Dict]:
     line = line.strip()
     if not line or line.startswith('#'):
         return None
-    
+
     # Извлекаем параметры из tg:// или https://t.me/proxy ссылок
     pattern = r'(?:tg://proxy|https://t\.me/proxy)[?&]server=([^&]+)&port=(\d+)&secret=([^&]+)'
     match = re.search(pattern, line)
-    
+
     if match:
         server, port, secret = match.groups()
-        return {
-            'ip': server,
-            'port': int(port),
-            'secret': secret,
-            'original': line
-        }
-    
+        return {'ip': server, 'port': int(port), 'secret': secret, 'original': line}
+
     # Пробуем формат proxy:port:secret
     parts = line.split(':')
     if len(parts) >= 3:
         try:
-            return {
-                'ip': parts[0],
-                'port': int(parts[1]),
-                'secret': parts[2],
-                'original': line
-            }
+            return {'ip': parts[0], 'port': int(parts[1]), 'secret': parts[2], 'original': line}
         except ValueError:
             pass
-    
+
     return None
 
 
@@ -90,18 +80,18 @@ async def check_proxy_ping(ip: str, port: int) -> Optional[float]:
     Возвращает пинг в мс или None если недоступен.
     """
     loop = asyncio.get_event_loop()
-    
+
     def try_connect() -> Optional[float]:
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(SOCKET_TIMEOUT)
-            
+
             start = time.time()
             result = sock.connect_ex((ip, port))
             elapsed = (time.time() - start) * 1000  # конвертируем в мс
-            
+
             sock.close()
-            
+
             if result == 0:
                 return round(elapsed, 2)
             return None
@@ -124,16 +114,39 @@ def get_flag_emoji(country_code: str) -> str:
            chr(base + ord(country_code[1].upper()) - ord('A'))
 
 
-def fetch_geo_batch(ips: List[str]) -> Dict[str, Tuple[str, str]]:
+def resolve_host(host: str) -> str:
     """
-    Определяет страну для списка IP через ip-api.com/batch.
+    Резолвит домен в IP-адрес. Если host уже является IP — возвращает как есть.
+    """
+    try:
+        # getaddrinfo возвращает список кортежей, берём первый IPv4-адрес
+        infos = socket.getaddrinfo(host, None, socket.AF_INET)
+        return infos[0][4][0]
+    except socket.gaierror:
+        return host
+
+
+def fetch_geo_batch(hosts: List[str]) -> Dict[str, Tuple[str, str]]:
+    """
+    Определяет страну для списка IP/доменов через ip-api.com/batch.
+    Домены предварительно резолвятся в IP.
     Отправляет батчами по GEO_BATCH_SIZE штук.
-    Возвращает словарь {ip: (страна, флаг)}.
+    Возвращает словарь {оригинальный host: (страна, флаг)}.
     """
     results = {}
 
-    for i in range(0, len(ips), GEO_BATCH_SIZE):
-        batch = ips[i:i + GEO_BATCH_SIZE]
+    # Резолвим домены в IP, запоминаем маппинг host -> ip
+    host_to_ip = {host: resolve_host(host) for host in hosts}
+
+    # Инвертируем: ip -> список хостов (несколько доменов могут вести на один IP)
+    ip_to_hosts: Dict[str, List[str]] = {}
+    for host, ip in host_to_ip.items():
+        ip_to_hosts.setdefault(ip, []).append(host)
+
+    unique_ips = list(ip_to_hosts.keys())
+
+    for i in range(0, len(unique_ips), GEO_BATCH_SIZE):
+        batch = unique_ips[i:i + GEO_BATCH_SIZE]
         body = json.dumps(batch).encode()
 
         try:
@@ -155,9 +168,13 @@ def fetch_geo_batch(ips: List[str]) -> Dict[str, Tuple[str, str]]:
                     if entry.get('status') == 'success':
                         country = entry.get('country', 'Неизвестно')
                         code = entry.get('countryCode', '')
-                        results[ip] = (country, get_flag_emoji(code) if code else '🌐')
+                        geo = (country, get_flag_emoji(code) if code else '🌐')
                     else:
-                        results[ip] = ('Неизвестно', '🌐')
+                        geo = ('Неизвестно', '🌐')
+
+                    # Записываем результат для всех хостов, которые резолвятся в этот IP
+                    for host in ip_to_hosts.get(ip, [ip]):
+                        results[host] = geo
 
                 # Если лимит исчерпан — ждём сброса окна перед следующим батчем
                 if x_rl == '0':
@@ -166,9 +183,10 @@ def fetch_geo_batch(ips: List[str]) -> Dict[str, Tuple[str, str]]:
 
         except Exception as e:
             print(f"  Ошибка geo-батча: {e}")
-            # Помечаем все IP батча как неизвестные
+            # Помечаем все хосты батча как неизвестные
             for ip in batch:
-                results.setdefault(ip, ('Неизвестно', '🌐'))
+                for host in ip_to_hosts.get(ip, [ip]):
+                    results.setdefault(host, ('Неизвестно', '🌐'))
 
     return results
 
@@ -245,8 +263,8 @@ async def main():
     # Определяем страну для всех рабочих прокси одним батч-запросом
     print("\n🌍 Определение стран (batch)...")
     loop = asyncio.get_event_loop()
-    unique_ips = list({p['ip'] for p in working_proxies})
-    geo_map = await loop.run_in_executor(None, fetch_geo_batch, unique_ips)
+    unique_hosts = list({p['ip'] for p in working_proxies})
+    geo_map = await loop.run_in_executor(None, fetch_geo_batch, unique_hosts)
 
     # Подставляем гео в результаты
     for proxy in working_proxies:
