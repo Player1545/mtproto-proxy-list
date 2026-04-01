@@ -10,7 +10,7 @@ import re
 import socket
 import time
 from datetime import datetime
-from urllib.request import urlopen
+from urllib.request import urlopen, Request
 from urllib.error import URLError
 from typing import Optional, Dict, List, Tuple
 
@@ -30,8 +30,10 @@ HTTP_TIMEOUT = 10
 
 # Максимальное количество одновременных проверок
 MAX_CONCURRENT = 50
-# Отдельный лимит для geo-запросов — ip-api.com позволяет ~45 req/min без ключа
-MAX_GEO_CONCURRENT = 10
+
+# ip-api.com /batch: до 100 IP за запрос, лимит 15 req/min без ключа
+GEO_BATCH_SIZE = 100
+GEO_BATCH_URL = "http://ip-api.com/batch?fields=status,country,countryCode,query"
 
 
 def parse_proxy_line(line: str) -> Optional[Dict]:
@@ -109,61 +111,66 @@ async def check_proxy_ping(ip: str, port: int) -> Optional[float]:
     return await loop.run_in_executor(None, try_connect)
 
 
-def _fetch_geo(ip: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Синхронная geo-lookup функция — запускается через executor.
-    Сначала пробует ip-api.com (batch-friendly, без ключа до 45 req/min),
-    при ошибке падает на ipapi.co.
-    """
-    # --- ip-api.com ---
-    try:
-        url = f"http://ip-api.com/json/{ip}?fields=status,country,countryCode"
-        with urlopen(url, timeout=HTTP_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode())
-            if data.get('status') == 'success':
-                country = data.get('country', 'Неизвестно')
-                code = data.get('countryCode', '')
-                return country, get_flag_emoji(code) if code else '🌐'
-    except Exception:
-        pass
-
-    # --- fallback: ipapi.co ---
-    try:
-        url = f"https://ipapi.co/{ip}/json/"
-        with urlopen(url, timeout=HTTP_TIMEOUT) as resp:
-            data = json.loads(resp.read().decode())
-            # ipapi.co возвращает поле 'error' при превышении лимита
-            if data.get('error'):
-                return None, None
-            country = data.get('country_name', 'Неизвестно')
-            code = data.get('country_code', '')
-            return country, get_flag_emoji(code) if code else '🌐'
-    except Exception:
-        pass
-
-    return None, None
-
-
-async def get_country_and_flag(ip: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Определяет страну по IP через внешний API.
-    Возвращает (страна, флаг).
-    """
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, _fetch_geo, ip)
-
-
 def get_flag_emoji(country_code: str) -> str:
     """
     Конвертирует код страны (US, DE, etc.) в emoji флаг.
     """
     if len(country_code) != 2:
         return '🌐'
-    
+
     # Unicode magic для флагов
     base = 0x1F1E6
     return chr(base + ord(country_code[0].upper()) - ord('A')) + \
            chr(base + ord(country_code[1].upper()) - ord('A'))
+
+
+def fetch_geo_batch(ips: List[str]) -> Dict[str, Tuple[str, str]]:
+    """
+    Определяет страну для списка IP через ip-api.com/batch.
+    Отправляет батчами по GEO_BATCH_SIZE штук.
+    Возвращает словарь {ip: (страна, флаг)}.
+    """
+    results = {}
+
+    for i in range(0, len(ips), GEO_BATCH_SIZE):
+        batch = ips[i:i + GEO_BATCH_SIZE]
+        body = json.dumps(batch).encode()
+
+        try:
+            req = Request(
+                GEO_BATCH_URL,
+                data=body,
+                headers={'Content-Type': 'application/json'},
+                method='POST',
+            )
+            with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+                # Проверяем остаток лимита из заголовков
+                x_rl = resp.headers.get('X-Rl', '1')
+                x_ttl = resp.headers.get('X-Ttl', '0')
+
+                data = json.loads(resp.read().decode())
+
+                for entry in data:
+                    ip = entry.get('query', '')
+                    if entry.get('status') == 'success':
+                        country = entry.get('country', 'Неизвестно')
+                        code = entry.get('countryCode', '')
+                        results[ip] = (country, get_flag_emoji(code) if code else '🌐')
+                    else:
+                        results[ip] = ('Неизвестно', '🌐')
+
+                # Если лимит исчерпан — ждём сброса окна перед следующим батчем
+                if x_rl == '0':
+                    print(f"  ⏳ Лимит ip-api.com исчерпан, ждём {x_ttl}с...")
+                    time.sleep(int(x_ttl) + 1)
+
+        except Exception as e:
+            print(f"  Ошибка geo-батча: {e}")
+            # Помечаем все IP батча как неизвестные
+            for ip in batch:
+                results.setdefault(ip, ('Неизвестно', '🌐'))
+
+    return results
 
 
 async def fetch_source(url: str) -> str:
@@ -181,46 +188,38 @@ async def fetch_source(url: str) -> str:
         return ""
 
 
-async def process_proxy(proxy: Dict, semaphore: asyncio.Semaphore) -> Optional[Dict]:
+async def check_proxy(proxy: Dict, semaphore: asyncio.Semaphore) -> Optional[Dict]:
     """
-    Обрабатывает один прокси: проверяет пинг и определяет страну.
+    Проверяет доступность прокси через ping.
+    Возвращает прокси с пингом или None если недоступен.
     """
     async with semaphore:
-        ip = proxy['ip']
-        port = proxy['port']
-
-        ping = await check_proxy_ping(ip, port)
+        ping = await check_proxy_ping(proxy['ip'], proxy['port'])
         if ping is None:
             return None
 
-    # geo-запрос — отдельный семафор, чтобы не спамить API
-    async with geo_semaphore:
-        country, flag = await get_country_and_flag(ip)
-
-    return {
-        'ip': ip,
-        'port': port,
-        'secret': proxy['secret'],
-        'country': country or 'Неизвестно',
-        'flag': flag or '🌐',
-        'ping': ping,
-        'link': clean_proxy_url(proxy),
-    }
+        return {
+            'ip': proxy['ip'],
+            'port': proxy['port'],
+            'secret': proxy['secret'],
+            'ping': ping,
+            'link': clean_proxy_url(proxy),
+        }
 
 
 async def main():
     print("🔍 Запуск проверки MTProto прокси...")
     print(f"Источники: {len(PROXY_SOURCES)}")
-    
+
     # Загружаем все источники
     print("\n📥 Загрузка источников...")
     contents = await asyncio.gather(*[fetch_source(url) for url in PROXY_SOURCES])
-    
+
     # Парсим все прокси
     print("\n📋 Парсинг прокси...")
     all_proxies = []
     seen = set()
-    
+
     for content in contents:
         for line in content.split('\n'):
             proxy = parse_proxy_line(line)
@@ -233,29 +232,45 @@ async def main():
 
     print(f"Найдено уникальных прокси: {len(all_proxies)}")
 
-    print("\n✅ Проверка доступности и определение страны...")
+    # Проверяем доступность через ping
+    print("\n✅ Проверка доступности...")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-    geo_semaphore = asyncio.Semaphore(MAX_GEO_CONCURRENT)
 
-    tasks = [process_proxy(p, semaphore, geo_semaphore) for p in all_proxies]
+    tasks = [check_proxy(p, semaphore) for p in all_proxies]
     results = await asyncio.gather(*tasks)
 
     working_proxies = [p for p in results if p is not None]
+    print(f"Рабочих прокси: {len(working_proxies)}")
+
+    # Определяем страну для всех рабочих прокси одним батч-запросом
+    print("\n🌍 Определение стран (batch)...")
+    loop = asyncio.get_event_loop()
+    unique_ips = list({p['ip'] for p in working_proxies})
+    geo_map = await loop.run_in_executor(None, fetch_geo_batch, unique_ips)
+
+    # Подставляем гео в результаты
+    for proxy in working_proxies:
+        country, flag = geo_map.get(proxy['ip'], ('Неизвестно', '🌐'))
+        proxy['country'] = country
+        proxy['flag'] = flag
+
+    # Сортируем по пингу
     working_proxies.sort(key=lambda x: x['ping'])
 
     print(f"\n✅ Рабочих прокси: {len(working_proxies)}")
 
+    # Сохраняем результат
     output_data = {
         'last_update': int(time.time()),
-        'proxies': working_proxies
+        'proxies': working_proxies,
     }
-    
+
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
         json.dump(output_data, f, indent=2, ensure_ascii=False)
-    
+
     print(f"\n💾 Результат сохранён в {OUTPUT_FILE}")
     print(f"⏰ Время завершения: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    
+
     return len(working_proxies)
 
 
