@@ -30,6 +30,8 @@ HTTP_TIMEOUT = 10
 
 # Максимальное количество одновременных проверок
 MAX_CONCURRENT = 50
+# Отдельный лимит для geo-запросов — ip-api.com позволяет ~45 req/min без ключа
+MAX_GEO_CONCURRENT = 10
 
 
 def parse_proxy_line(line: str) -> Optional[Dict]:
@@ -103,30 +105,52 @@ async def check_proxy_ping(ip: str, port: int) -> Optional[float]:
             return None
         except (socket.error, socket.timeout, OSError):
             return None
-    
+
     return await loop.run_in_executor(None, try_connect)
 
 
-def get_country_and_flag(ip: str) -> Tuple[Optional[str], Optional[str]]:
+def _fetch_geo(ip: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Синхронная geo-lookup функция — запускается через executor.
+    Сначала пробует ip-api.com (batch-friendly, без ключа до 45 req/min),
+    при ошибке падает на ipapi.co.
+    """
+    # --- ip-api.com ---
+    try:
+        url = f"http://ip-api.com/json/{ip}?fields=status,country,countryCode"
+        with urlopen(url, timeout=HTTP_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode())
+            if data.get('status') == 'success':
+                country = data.get('country', 'Неизвестно')
+                code = data.get('countryCode', '')
+                return country, get_flag_emoji(code) if code else '🌐'
+    except Exception:
+        pass
+
+    # --- fallback: ipapi.co ---
+    try:
+        url = f"https://ipapi.co/{ip}/json/"
+        with urlopen(url, timeout=HTTP_TIMEOUT) as resp:
+            data = json.loads(resp.read().decode())
+            # ipapi.co возвращает поле 'error' при превышении лимита
+            if data.get('error'):
+                return None, None
+            country = data.get('country_name', 'Неизвестно')
+            code = data.get('country_code', '')
+            return country, get_flag_emoji(code) if code else '🌐'
+    except Exception:
+        pass
+
+    return None, None
+
+
+async def get_country_and_flag(ip: str) -> Tuple[Optional[str], Optional[str]]:
     """
     Определяет страну по IP через внешний API.
     Возвращает (страна, флаг).
     """
-    try:
-        # Используем ipapi.co для определения страны
-        url = f"http://ipapi.co/{ip}/json/"
-        with urlopen(url, timeout=HTTP_TIMEOUT) as response:
-            data = json.loads(response.read().decode())
-            
-            country = data.get('country_name', 'Неизвестно')
-            country_code = data.get('country_code', '')
-            
-            # Конвертируем код страны в флаг
-            flag = get_flag_emoji(country_code) if country_code else '🌐'
-            
-            return country, flag
-    except Exception:
-        return None, None
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, _fetch_geo, ip)
 
 
 def get_flag_emoji(country_code: str) -> str:
@@ -147,8 +171,11 @@ async def fetch_source(url: str) -> str:
     Загружает контент из источника.
     """
     try:
-        with urlopen(url, timeout=HTTP_TIMEOUT) as response:
-            return response.read().decode('utf-8', errors='ignore')
+        loop = asyncio.get_event_loop()
+        def _fetch():
+            with urlopen(url, timeout=HTTP_TIMEOUT) as resp:
+                return resp.read().decode('utf-8', errors='ignore')
+        return await loop.run_in_executor(None, _fetch)
     except Exception as e:
         print(f"Ошибка загрузки {url}: {e}")
         return ""
@@ -161,26 +188,24 @@ async def process_proxy(proxy: Dict, semaphore: asyncio.Semaphore) -> Optional[D
     async with semaphore:
         ip = proxy['ip']
         port = proxy['port']
-        
-        # Проверяем пинг
+
         ping = await check_proxy_ping(ip, port)
-        
-        # Если прокси недоступен, пропускаем
         if ping is None:
             return None
-        
-        # Определяем страну
-        country, flag = get_country_and_flag(ip)
-        
-        return {
-            'ip': ip,
-            'port': port,
-            'secret': proxy['secret'],
-            'country': country,
-            'flag': flag,
-            'ping': ping,
-            'link': clean_proxy_url(proxy)
-        }
+
+    # geo-запрос — отдельный семафор, чтобы не спамить API
+    async with geo_semaphore:
+        country, flag = await get_country_and_flag(ip)
+
+    return {
+        'ip': ip,
+        'port': port,
+        'secret': proxy['secret'],
+        'country': country or 'Неизвестно',
+        'flag': flag or '🌐',
+        'ping': ping,
+        'link': clean_proxy_url(proxy),
+    }
 
 
 async def main():
@@ -205,25 +230,21 @@ async def main():
                 if key not in seen:
                     seen.add(key)
                     all_proxies.append(proxy)
-    
+
     print(f"Найдено уникальных прокси: {len(all_proxies)}")
-    
-    # Проверяем прокси
-    print("\n✅ Проверка доступности...")
+
+    print("\n✅ Проверка доступности и определение страны...")
     semaphore = asyncio.Semaphore(MAX_CONCURRENT)
-    
-    tasks = [process_proxy(proxy, semaphore) for proxy in all_proxies]
+    geo_semaphore = asyncio.Semaphore(MAX_GEO_CONCURRENT)
+
+    tasks = [process_proxy(p, semaphore, geo_semaphore) for p in all_proxies]
     results = await asyncio.gather(*tasks)
-    
-    # Фильтруем успешные проверки
+
     working_proxies = [p for p in results if p is not None]
-    
-    # Сортируем по пингу
     working_proxies.sort(key=lambda x: x['ping'])
-    
+
     print(f"\n✅ Рабочих прокси: {len(working_proxies)}")
-    
-    # Сохраняем результат
+
     output_data = {
         'last_update': int(time.time()),
         'proxies': working_proxies
