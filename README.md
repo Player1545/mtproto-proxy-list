@@ -1,39 +1,54 @@
-# MTProto Proxy List
-P.S. Это эксперементальный репозиторий, созданный при помощи Qwen (coder-model). Список активных MTProto прокси для Telegram.
+﻿# MTProto Proxy List
 
+Экспериментальный репозиторий со списком активных MTProto-прокси для Telegram.
 
-## Особенности
+## Что делает проект
 
-- ✅ Автоматический парсинг из 3 источников
-- ✅ Проверка доступности прокси каждые 3 часа
-- ✅ Определение страны по IP
-- ✅ Очистка ссылок от рекламных параметров
-- ✅ Сортировка по пингу
-
-## Источники прокси
-
-1. [V2RayRoot/V2RayConfig](https://raw.githubusercontent.com/V2RayRoot/V2RayConfig/refs/heads/main/Config/proxies.txt)
-2. [sakha1370/V2rayCollector](https://raw.githubusercontent.com/sakha1370/V2rayCollector/refs/heads/main/active_mtproto_proxies.txt)
-3. [WhitePrime/xraycheck](https://raw.githubusercontent.com/WhitePrime/xraycheck/refs/heads/main/configs/white-list_mtproto)
+- собирает прокси из нескольких открытых источников
+- очищает и нормализует данные
+- проверяет доступность прокси
+- определяет страну по IP
+- сохраняет результат в `proxies.json`
+- показывает список на статическом сайте
 
 ## Структура проекта
 
-```
-├── index.html              # Главная страница
-├── styles.css              # Стили
-├── app.js                  # Фронтенд логика
-├── check_proxies.py        # Скрипт проверки прокси
-├── proxies.json            # Результат проверки (генерируется автоматически)
-└── .github/
-    └── workflows/
-        └── check-proxies.yml  # GitHub Actions workflow
+```text
+├── index.html                  # Главная страница
+├── styles.css                  # Стили
+├── app.js                      # Логика фронтенда
+├── main.py                     # Основная точка входа
+├── proxies.json                # Сгенерированный список прокси
+├── modules/                    # Модульное ядро проекта
+│   ├── cli.py
+│   ├── pipeline.py
+│   ├── parsers.py
+│   ├── checker.py
+│   ├── metadata.py
+│   ├── geo.py
+│   ├── sources.py
+│   ├── config.py
+│   └── models.py
+└── .github/workflows/
+    └── check-proxies.yml       # Автообновление списка
 ```
 
-## Локальный запуск проверки
+## Локальный запуск
 
 ```bash
-python check_proxies.py
+python main.py
 ```
+
+## GitHub Actions
+
+Workflow запускает:
+
+```bash
+python main.py
+```
+
+После успешной генерации workflow валидирует `proxies.json`, собирает статический сайт и
+публикует его через GitHub Pages artifact без push в основную ветку.
 
 ## Лицензия
 

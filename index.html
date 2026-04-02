@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
@@ -11,7 +11,12 @@
         <header>
             <h1>🔐 MTProto Proxy List</h1>
             <p class="subtitle">Активные прокси для Telegram</p>
-            <p><b>Предупреждение: могут быть неточности при отображении пинга (реальный пинг может отличаться от отображаемого). При выборе прокси рекомендую проверить пинг в самом приложении telegram.</b></p>
+            <p>
+                <b>
+                    Предупреждение: отображаемый пинг является приблизительным. Перед использованием
+                    прокси лучше дополнительно проверить его прямо в приложении Telegram.
+                </b>
+            </p>
             <div class="status-bar">
                 <span id="last-update">Обновлено: --</span>
                 <span id="total-proxies">Всего: 0</span>
@@ -29,6 +34,7 @@
         <div id="proxy-list" class="proxy-list">
             <div class="loading">Загрузка прокси...</div>
         </div>
+        <div id="pagination" class="pagination" hidden></div>
     </div>
 
     <div id="modal" class="modal">
@@ -49,8 +55,19 @@
                     <span id="detail-port" class="detail-value">--</span>
                 </div>
                 <div class="proxy-detail">
+                    <span class="detail-label">Тип:</span>
+                    <span id="detail-type" class="detail-value">--</span>
+                </div>
+                <div class="proxy-detail" id="fake-domain-row" hidden>
+                    <span class="detail-label">Маскировка:</span>
+                    <span id="detail-fake-domain" class="detail-value">--</span>
+                </div>
+                <div class="proxy-detail">
                     <span class="detail-label">Секрет:</span>
-                    <span id="detail-secret" class="detail-value">--</span>
+                    <div class="secret-container">
+                        <span id="detail-secret" class="detail-value detail-secret-value">--</span>
+                        <button id="toggle-secret" class="secondary-btn" type="button">Показать полностью</button>
+                    </div>
                 </div>
                 <div class="proxy-detail">
                     <span class="detail-label">Пинг:</span>
