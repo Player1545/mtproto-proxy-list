@@ -1,4 +1,4 @@
-* {
+﻿* {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
@@ -112,6 +112,9 @@ header h1 {
     transition: all 0.3s;
     position: relative;
     overflow: hidden;
+    width: 100%;
+    color: inherit;
+    text-align: left;
 }
 
 .proxy-card:hover {
@@ -174,6 +177,22 @@ header h1 {
     color: #aaa;
 }
 
+.proxy-badge {
+    display: inline-flex;
+    align-items: center;
+    max-width: 100%;
+    margin-bottom: 12px;
+    padding: 6px 10px;
+    border: 1px solid rgba(0, 212, 255, 0.25);
+    border-radius: 999px;
+    background: rgba(0, 212, 255, 0.08);
+    color: #7fe8ff;
+    font-size: 0.78rem;
+    font-weight: 600;
+    line-height: 1.2;
+    overflow-wrap: anywhere;
+}
+
 .proxy-info-row {
     display: flex;
     justify-content: space-between;
@@ -195,6 +214,46 @@ header h1 {
     color: #888;
     font-size: 1.2rem;
     grid-column: 1 / -1;
+}
+
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+    padding: 16px 20px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+}
+
+.pagination-btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: 8px;
+    background: #00d4ff;
+    color: #1a1a2e;
+    cursor: pointer;
+    font-size: 0.95rem;
+    transition: all 0.3s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: #00a8cc;
+}
+
+.pagination-btn:disabled {
+    background: rgba(255, 255, 255, 0.12);
+    color: rgba(255, 255, 255, 0.45);
+    cursor: not-allowed;
+}
+
+.pagination-page,
+.pagination-info {
+    color: #cbd5e1;
+    font-size: 0.95rem;
 }
 
 /* Modal */
@@ -287,8 +346,22 @@ header h1 {
     font-size: 1.1rem;
 }
 
+.secret-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+}
+
+.detail-secret-value {
+    font-family: monospace;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
 .detail-link {
     width: 100%;
+    min-width: 0;
     padding: 12px;
     background: rgba(255, 255, 255, 0.05);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -303,10 +376,12 @@ header h1 {
     display: flex;
     flex-direction: column;
     gap: 10px;
+    min-width: 0;
 }
 
 .copy-btn,
-.connect-btn {
+.connect-btn,
+.secondary-btn {
     padding: 12px 20px;
     border: none;
     border-radius: 8px;
@@ -324,6 +399,16 @@ header h1 {
 
 .copy-btn:hover {
     background: #00a8cc;
+}
+
+.secondary-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    color: #fff;
+}
+
+.secondary-btn:hover {
+    background: rgba(255, 255, 255, 0.14);
 }
 
 .connect-btn {
@@ -363,3 +448,4 @@ header h1 {
         padding: 20px;
     }
 }
+
