@@ -9,6 +9,13 @@ from .parsers import clean_proxy_url
 
 
 async def check_proxy_ping(ip: str, port: int) -> float | None:
+    if not ip or not isinstance(ip, str) or len(ip) == 0:
+        return None
+    try:
+        ip.encode('idna')
+    except UnicodeError:
+        return None
+
     try:
         start = time.time()
         _, writer = await asyncio.wait_for(
