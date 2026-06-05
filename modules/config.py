@@ -26,10 +26,6 @@ PROXY_SOURCES = [
         format="text",
     ),
     ProxySource(
-        url="https://raw.githubusercontent.com/WhitePrime/xraycheck/refs/heads/main/configs/white-list_mtproto",
-        format="text",
-    ),
-    ProxySource(
         url="https://raw.githubusercontent.com/SoliSpirit/mtproto/refs/heads/master/all_proxies.txt",
         format="text",
     ),
@@ -52,21 +48,5 @@ PROXY_SOURCES = [
     ProxySource(
         url="https://raw.githubusercontent.com/Grim1313/mtproto-for-telegram/refs/heads/master/all_proxies.txt",
         format="text",
-    ),
-    ProxySource(
-        url="https://mtpro.xyz/api/",
-        format="json",
-        params={"type": "mtprotoS"},
-        headers={
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:149.0) Gecko/20100101 Firefox/149.0",
-            "Accept": "*/*",
-            "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Referer": "https://mtpro.xyz/mtproto-ru",
-            "Sec-GPC": "1",
-            "Connection": "keep-alive",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-origin",
-        },
     ),
 ]
