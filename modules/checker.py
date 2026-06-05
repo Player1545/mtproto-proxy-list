@@ -19,7 +19,7 @@ async def check_proxy_ping(ip: str, port: int) -> float | None:
         writer.close()
         await writer.wait_closed()
         return round(elapsed, 2)
-    except (asyncio.TimeoutError, OSError, ConnectionRefusedError):
+    except (asyncio.TimeoutError, OSError, ConnectionRefusedError, UnicodeError, ValueError):
         return None
 
 
